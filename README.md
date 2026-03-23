@@ -20,10 +20,12 @@
 
 ## วิธีใช้งาน (พัฒนา)
 1. สร้าง virtual environment และติดตั้ง dependency ของ Kivy/Android
-2. รันแอปในอุปกรณ์ Android ที่เปิด Bluetooth
-3. เลือกอุปกรณ์จาก dropdown แล้วติดตามค่า RSSI
+2. สร้างไฟล์ main.py เมื่อเสร็จแล้วให้รันคำสั่ง buildozer -v android debug
+3. app จะอยู่ในโฟลเดอร์ bin รันแอปในอุปกรณ์ Android
+4. รันแอปในอุปกรณ์ Android ที่อนุญาตและเปิด Bluetooth
+5. เลือกอุปกรณ์จาก dropdown แล้วติดตามค่า RSSI
 
 ## หมายเหตุ
 - โปรเจกต์นี้ออกแบบให้ทำงานบน Android เป็นหลัก
 - ต้องอนุญาตสิทธิ์ Bluetooth/Location/Notification ให้ครบเพื่อการสแกนที่ถูกต้อง
-=======
+- ต้องเปิด Gps ตลอด
