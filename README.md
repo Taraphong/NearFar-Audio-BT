@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # NearFar Audio BT
 
 แอป Android (Kivy + Python) สำหรับสแกนอุปกรณ์ Bluetooth และสลับเสียงอัตโนมัติตามค่า RSSI ของอุปกรณ์ที่เลือก (เช่น สมาร์ตวอทช์)
@@ -28,5 +27,3 @@
 - โปรเจกต์นี้ออกแบบให้ทำงานบน Android เป็นหลัก
 - ต้องอนุญาตสิทธิ์ Bluetooth/Location/Notification ให้ครบเพื่อการสแกนที่ถูกต้อง
 =======
-# NearFar-Audio-BT
->>>>>>> 5fa6f41404b61061a5863867e7af6dffd5972909
