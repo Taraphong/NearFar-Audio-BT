@@ -1,0 +1,19 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+
+# Buildozer / Android build artifacts
+.buildozer/
+bin/
+*.apk
+*.aab
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
