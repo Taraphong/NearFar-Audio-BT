@@ -10,7 +10,6 @@
 * **Foreground Service:** Ensures seamless background operation and signal tracking.
 * **Activity Logs:** Built-in console for monitoring connection status and signal fluctuations.
 
-<<<<<<< HEAD
 ##  Core Architecture
 
 * **`main.py`**: Handles User Interface and primary application flow.
