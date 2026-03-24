@@ -1,10 +1,10 @@
 [app]
 
 # (str) Title of your application
-title = Bluetooth RSSI Scanner
+title = NearFar Audio BT
 
 # (str) Package name
-package.name = blerssi
+package.name = nearfar_audio_bt
 
 # (str) Package domain (needed for android/ios packaging)
 package.domain = org.example
