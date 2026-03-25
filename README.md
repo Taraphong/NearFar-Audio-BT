@@ -29,6 +29,6 @@
 
 ---
 
-##  หมายเหตุ / Notes
-- โปรเจกต์นี้ออกแบบมาเพื่อใช้งานบน **Android** เป็นหลัก (This project is primarily designed for Android).
-- การสแกน Bluetooth ใน Android เวอร์ชันใหม่จำเป็นต้องเปิด **Location/GPS** ตลอดเวลา (Bluetooth scanning requires GPS/Location to be enabled on modern Android versions).
+##  Notes
+- This project is primarily designed for use on **Android**.
+- Bluetooth scanning requires GPS/Location to be enabled on modern Android versions.
