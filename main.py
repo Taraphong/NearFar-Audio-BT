@@ -1,6 +1,6 @@
+import os
 from datetime import datetime
 import json
-import os
 
 from kivy.app import App
 from kivy.clock import Clock
@@ -13,7 +13,10 @@ from kivy.uix.spinner import Spinner
 
 from output import AudioOutputController
 from pullrssi import RSSIRepository
-from scan import IS_ANDROID, BluetoothScanner
+from scan import BluetoothScanner
+from platfrom import Platform
+
+IS_ANDROID = Platform.is_android()
 
 if IS_ANDROID:
     from jnius import autoclass
@@ -22,7 +25,8 @@ if IS_ANDROID:
     Context = autoclass("android.content.Context")
     PowerManager = autoclass("android.os.PowerManager")
     Uri = autoclass("android.net.Uri")
-    ServiceBg = autoclass("org.example.blerssi.ServiceBg")
+    Intent = autoclass("android.content.Intent")
+    ServiceBg = autoclass("com.example.nearfar.ServiceBg")
 
 
 class BluetoothAudioApp(App):
@@ -282,7 +286,7 @@ class BluetoothAudioApp(App):
             if pm is not None and pm.isIgnoringBatteryOptimizations(package_name):
                 self.write_log("Battery optimization already ignored")
                 return
-            intent = Intent("android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS") #type: ignore
+            intent = Intent("android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS")
             intent.setData(Uri.parse(f"package:{package_name}"))
             activity.startActivity(intent)
             self.write_log("Requested ignore battery optimization")
