@@ -1,21 +1,15 @@
 from kivy.clock import Clock
-from platfrom import Platform
 from time import monotonic
+from app_platform import App_Platform
 
-IS_ANDROID = Platform.is_android()
+IS_ANDROID = App_Platform.is_android()
 
 if IS_ANDROID:
     from android.broadcast import BroadcastReceiver  # type: ignore
-    from android.permissions import Permission, request_permissions  # type: ignore
     from jnius import PythonJavaClass, autoclass, java_method
 
     BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
     BluetoothDevice = autoclass("android.bluetooth.BluetoothDevice")
-    Context = autoclass("android.content.Context")
-    LocationManager = autoclass("android.location.LocationManager")
-    PythonActivity = autoclass("org.kivy.android.PythonActivity")
-    PackageManager = autoclass("android.content.pm.PackageManager")
-    BuildVersion = autoclass("android.os.Build$VERSION")
 
     class BLEScanCallback(PythonJavaClass):
         __javainterfaces__ = ["android/bluetooth/BluetoothAdapter$LeScanCallback"]
@@ -49,18 +43,7 @@ class BluetoothScanner:
     def request_permissions(self):
         if not IS_ANDROID:
             return
-        perms = [
-            Permission.BLUETOOTH,
-            Permission.BLUETOOTH_ADMIN,
-            Permission.ACCESS_FINE_LOCATION,
-            Permission.ACCESS_COARSE_LOCATION,
-            "android.permission.ACCESS_BACKGROUND_LOCATION",
-            "android.permission.BLUETOOTH_SCAN",
-            "android.permission.BLUETOOTH_CONNECT",
-            "android.permission.MODIFY_AUDIO_SETTINGS",
-            "android.permission.POST_NOTIFICATIONS",
-        ]
-        request_permissions(perms)
+        Platform.request_permissions()
 
     def _status(self, text):
         if text == self._last_status:
@@ -82,51 +65,14 @@ class BluetoothScanner:
         self.adapter = BluetoothAdapter.getDefaultAdapter()
         return self.adapter is not None
 
-    def _has_permission(self, permission_name):
-        if not IS_ANDROID:
-            return True
-        try:
-            activity = PythonActivity.mActivity
-            granted = activity.checkSelfPermission(permission_name)
-            return int(granted) == int(PackageManager.PERMISSION_GRANTED)
-        except Exception as exc:
-            self._log(f"Permission check error ({permission_name}): {exc}")
-            return False
-
     def _missing_scan_permissions(self):
-        if not IS_ANDROID:
-            return []
-        sdk = int(BuildVersion.SDK_INT)
-        if sdk >= 31:
-            required = [
-                "android.permission.BLUETOOTH_SCAN",
-                "android.permission.BLUETOOTH_CONNECT",
-            ]
-        else:
-            required = [
-                "android.permission.ACCESS_FINE_LOCATION",
-            ]
-        return [perm for perm in required if not self._has_permission(perm)]
+        return Platform.missing_bluetooth_permissions()
 
     def is_gps_enabled(self):
-        if not IS_ANDROID:
-            return False
-        try:
-            activity = PythonActivity.mActivity
-            location_manager = activity.getSystemService(Context.LOCATION_SERVICE)
-            if location_manager is None:
-                self._log("LocationManager unavailable")
-                return False
-            gps_enabled = bool(
-                location_manager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-            )
-            network_enabled = bool(
-                location_manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-            )
-            return gps_enabled or network_enabled
-        except Exception as exc:
-            self._log(f"GPS check error: {exc}")
-            return False
+        enabled = Platform.is_location_service_enabled()
+        if not enabled:
+            self._log("Location service unavailable or disabled")
+        return enabled
 
     def _ensure_receiver(self):
         if not IS_ANDROID or self.receiver is not None:

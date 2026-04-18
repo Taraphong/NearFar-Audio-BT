@@ -1,14 +1,14 @@
 from time import monotonic
-from platfrom import Platform
+from app_platform import App_Platform
 
-IS_ANDROID = Platform.is_android()
+IS_ANDROID = App_Platform.is_android()
 
 if IS_ANDROID:
     from jnius import autoclass
 
     PythonActivity = autoclass("org.kivy.android.PythonActivity")
-    AudioManager = autoclass("android.media.AudioManager")
     Context = autoclass("android.content.Context")
+    AudioManager = autoclass("android.media.AudioManager")
 
 
 class AudioOutputController:

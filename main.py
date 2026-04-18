@@ -14,9 +14,9 @@ from kivy.uix.spinner import Spinner
 from output import AudioOutputController
 from pullrssi import RSSIRepository
 from scan import BluetoothScanner
-from platfrom import Platform
+from app_platform import App_Platform
 
-IS_ANDROID = Platform.is_android()
+IS_ANDROID = App_Platform.is_android()
 
 if IS_ANDROID:
     from jnius import autoclass
@@ -137,7 +137,7 @@ class BluetoothAudioApp(App):
         self.stop_btn.bind(on_release=lambda *_: self.scanner.stop_scan())
 
         if IS_ANDROID:
-            self.scanner.request_permissions()
+            Platform.request_permissions()
             if not self.scanner.initialize():
                 self.on_scan_status("No Bluetooth adapter")
             self.output.initialize()
@@ -295,6 +295,14 @@ class BluetoothAudioApp(App):
 
     def _start_foreground_service(self):
         if not IS_ANDROID:
+            return
+        missing_permissions = Platform.missing_foreground_service_permissions()
+        if missing_permissions:
+            self.write_log(
+                "Foreground service permission missing: "
+                + ", ".join(missing_permissions)
+            )
+            Platform.request_permissions(missing_permissions)
             return
         try:
             activity = PythonActivity.mActivity

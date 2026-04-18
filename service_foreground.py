@@ -3,19 +3,24 @@ import os
 import traceback
 from time import sleep
 
-from jnius import PythonJavaClass, autoclass, java_method
+from app_platform import App_Platform
 
-PythonService = autoclass("org.kivy.android.PythonService")
-BuildVersion = autoclass("android.os.Build$VERSION")
-NotificationChannel = autoclass("android.app.NotificationChannel")
-NotificationManager = autoclass("android.app.NotificationManager")
-NotificationBuilder = autoclass("android.app.Notification$Builder")
-PendingIntent = autoclass("android.app.PendingIntent")
-Intent = autoclass("android.content.Intent")
-Context = autoclass("android.content.Context")
-Log = autoclass("android.util.Log")
-BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
-AudioManager = autoclass("android.media.AudioManager")
+IS_ANDROID = App_Platform.is_android()
+
+if IS_ANDROID:
+    from jnius import PythonJavaClass, autoclass, java_method
+
+    PythonService = autoclass("org.kivy.android.PythonService")
+    BuildVersion = autoclass("android.os.Build$VERSION")
+    NotificationChannel = autoclass("android.app.NotificationChannel")
+    NotificationManager = autoclass("android.app.NotificationManager")
+    NotificationBuilder = autoclass("android.app.Notification$Builder")
+    PendingIntent = autoclass("android.app.PendingIntent")
+    Intent = autoclass("android.content.Intent")
+    Context = autoclass("android.content.Context")
+    Log = autoclass("android.util.Log")
+    BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
+    AudioManager = autoclass("android.media.AudioManager")
 
 
 def _log(msg):
@@ -59,10 +64,14 @@ def start_foreground_notification():
         builder = NotificationBuilder(context)
 
     package_manager = context.getPackageManager()
-    activity_intent = package_manager.getLaunchIntentForPackage(context.getPackageName())
+    activity_intent = package_manager.getLaunchIntentForPackage(
+        context.getPackageName()
+    )
     if activity_intent is None:
         activity_intent = Intent()
-    activity_intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK)
+    activity_intent.setFlags(
+        Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK
+    )
     pending_flags = PendingIntent.FLAG_UPDATE_CURRENT
     if BuildVersion.SDK_INT >= 23:
         pending_flags |= PendingIntent.FLAG_IMMUTABLE
