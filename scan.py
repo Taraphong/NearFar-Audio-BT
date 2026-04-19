@@ -1,19 +1,16 @@
 from kivy.clock import Clock
-from kivy.utils import platform
 from time import monotonic
+from app_platform import App_Platform
 
-IS_ANDROID = platform == "android"
+IS_ANDROID = App_Platform.is_android()
 
 if IS_ANDROID:
     from android.broadcast import BroadcastReceiver  # type: ignore
-    from android.permissions import Permission, request_permissions  # type: ignore
     from jnius import PythonJavaClass, autoclass, java_method
 
     BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
     BluetoothDevice = autoclass("android.bluetooth.BluetoothDevice")
 
-
-if IS_ANDROID:
     class BLEScanCallback(PythonJavaClass):
         __javainterfaces__ = ["android/bluetooth/BluetoothAdapter$LeScanCallback"]
         __javacontext__ = "app"
@@ -39,28 +36,39 @@ class BluetoothScanner:
         self.selected_address = None
         self.track_selected_mode = False
         self._last_emit = {}
+        self._discovery_attempts = 0
+        self._last_status = None
+        self._last_log = {}
+        self._awaiting_permission_result = False
 
-    def request_permissions(self):
-        if not IS_ANDROID:
+    def _status(self, text):
+        if text == self._last_status:
             return
-        perms = [
-            Permission.BLUETOOTH,
-            Permission.BLUETOOTH_ADMIN,
-            Permission.ACCESS_FINE_LOCATION,
-            Permission.ACCESS_COARSE_LOCATION,
-            "android.permission.ACCESS_BACKGROUND_LOCATION",
-            "android.permission.BLUETOOTH_SCAN",
-            "android.permission.BLUETOOTH_CONNECT",
-            "android.permission.MODIFY_AUDIO_SETTINGS",
-            "android.permission.POST_NOTIFICATIONS",
-        ]
-        request_permissions(perms)
+        self._last_status = text
+        self.on_status(text)
+
+    def _log(self, text):
+        now = monotonic()
+        prev = self._last_log.get(text)
+        if prev is not None and (now - prev) < 1.0:
+            return
+        self._last_log[text] = now
+        self.on_log(text)
 
     def initialize(self):
         if not IS_ANDROID:
             return False
         self.adapter = BluetoothAdapter.getDefaultAdapter()
         return self.adapter is not None
+
+    def _missing_scan_permissions(self):
+        return App_Platform.missing_bluetooth_permissions()
+
+    def is_gps_enabled(self):
+        enabled = App_Platform.is_location_service_enabled()
+        if not enabled:
+            self._log("Location service unavailable or disabled")
+        return enabled
 
     def _ensure_receiver(self):
         if not IS_ANDROID or self.receiver is not None:
@@ -118,12 +126,12 @@ class BluetoothScanner:
                 device = iterator.next()
                 self._emit_device(device, None, "paired")
         except Exception as exc:
-            self.on_log(f"Load paired error: {exc}")
+            self._log(f"Load paired error: {exc}")
 
     def _on_bluetooth_event(self, _context, intent):
         action = intent.getAction()
         if action == BluetoothAdapter.ACTION_DISCOVERY_STARTED:
-            Clock.schedule_once(lambda *_: self.on_status("Scanning Bluetooth..."), 0)
+            Clock.schedule_once(lambda *_: self._status("Scanning Bluetooth..."), 0)
             return
         if action == BluetoothAdapter.ACTION_DISCOVERY_FINISHED:
             if self.scanning:
@@ -142,39 +150,101 @@ class BluetoothScanner:
         try:
             if self.adapter.isDiscovering():
                 self.adapter.cancelDiscovery()
+                Clock.schedule_once(lambda *_: self._restart_discovery(), 0.4)
+                return
             self.adapter.startDiscovery()
         except Exception as exc:
-            self.on_log(f"Discovery restart error: {exc}")
+            self._log(f"Discovery restart error: {exc}")
+
+    def _attempt_start_discovery(self):
+        if not IS_ANDROID or not self.scanning or self.adapter is None:
+            return
+        self._discovery_attempts += 1
+        try:
+            if self.adapter.isDiscovering():
+                self.adapter.cancelDiscovery()
+                Clock.schedule_once(lambda *_: self._attempt_start_discovery(), 0.4)
+                return
+            started = bool(self.adapter.startDiscovery())
+            if started:
+                self._status("Scan started")
+                self._log(f"Classic discovery started (attempt {self._discovery_attempts})")
+                return
+            if self._discovery_attempts < 3:
+                self._log(
+                    f"Classic discovery returned False on attempt {self._discovery_attempts}, retrying..."
+                )
+                Clock.schedule_once(lambda *_: self._attempt_start_discovery(), 0.7)
+                return
+            self._status("Scan start failed")
+            self._log("Classic discovery failed after 3 attempts")
+        except Exception as exc:
+            if self._discovery_attempts < 3:
+                self._log(
+                    f"Discovery attempt {self._discovery_attempts} error: {exc}; retrying..."
+                )
+                Clock.schedule_once(lambda *_: self._attempt_start_discovery(), 0.7)
+                return
+            self._status(f"Scan error: {exc}")
+
+    def _on_permission_result(self, permissions, grants):
+        self._awaiting_permission_result = False
+        grant_map = dict(zip(permissions, grants))
+        denied = [
+            permission
+            for permission in App_Platform.bluetooth_runtime_permissions()
+            if not grant_map.get(permission, False)
+        ]
+        if denied:
+            self._status("Missing Bluetooth permissions")
+            self._log(f"Permission denied: {', '.join(denied)}")
+            return
+        self._log("Bluetooth permissions granted, retrying scan")
+        Clock.schedule_once(lambda *_: self.start_scan(), 0.2)
 
     def start_scan(self):
         if not IS_ANDROID:
-            self.on_status("Android only")
+            self._status("Android only")
             return
         if self.adapter is None:
-            self.on_status("No Bluetooth adapter")
+            self._status("No Bluetooth adapter")
             return
         if not self.adapter.isEnabled():
-            self.on_status("Bluetooth is OFF")
+            self._status("Bluetooth is OFF")
+            return
+        missing_permissions = self._missing_scan_permissions()
+        if missing_permissions:
+            self._status("Missing Bluetooth permissions")
+            self._log(f"Missing permissions: {', '.join(missing_permissions)}")
+            if not self._awaiting_permission_result:
+                self._awaiting_permission_result = True
+                App_Platform.request_permissions(
+                    App_Platform.bluetooth_runtime_permissions(),
+                    callback=self._on_permission_result,
+                )
+            return
+        if not self.is_gps_enabled():
+            self._status("GPS / Location is OFF")
+            self._log("Bluetooth scan requires GPS / Location service to be enabled")
             return
         self._ensure_receiver()
         self.scanning = True
         self.track_selected_mode = False
+        self._discovery_attempts = 0
         self._load_paired_devices()
-        try:
-            if self.adapter.isDiscovering():
-                self.adapter.cancelDiscovery()
-            started = bool(self.adapter.startDiscovery())
-            self.on_status("Scan started" if started else "Scan start failed")
-        except Exception as exc:
-            self.on_status(f"Scan error: {exc}")
+        self._attempt_start_discovery()
 
         if self.ble_callback is None:
             self.ble_callback = BLEScanCallback(self)
         try:
+            self.adapter.stopLeScan(self.ble_callback)
+        except Exception:
+            pass
+        try:
             ble_started = bool(self.adapter.startLeScan(self.ble_callback))
-            self.on_log(f"BLE scan started={ble_started}")
+            self._log(f"BLE scan started={ble_started}")
         except Exception as exc:
-            self.on_log(f"BLE start error: {exc}")
+            self._log(f"BLE start error: {exc}")
 
     def set_selected_device(self, address):
         self.selected_address = address
@@ -187,20 +257,20 @@ class BluetoothScanner:
                 if self.adapter.isDiscovering():
                     self.adapter.cancelDiscovery()
             except Exception as exc:
-                self.on_log(f"Stop scan error: {exc}")
+                self._log(f"Stop scan error: {exc}")
         # Keep BLE scan alive for selected device tracking after pressing Stop.
         if self.selected_address:
             self.track_selected_mode = True
             self._ensure_ble_tracking()
             self.scanning = False
-            self.on_status("Full scan stopped, tracking selected device")
+            self._status("Full scan stopped, tracking selected device")
             return
 
         if IS_ANDROID and self.adapter is not None:
             self._stop_ble()
             self.track_selected_mode = False
         self.scanning = False
-        self.on_status("Scan stopped")
+        self._status("Scan stopped")
 
     def _ensure_ble_tracking(self):
         if not IS_ANDROID or self.adapter is None:
@@ -213,9 +283,9 @@ class BluetoothScanner:
             pass
         try:
             started = bool(self.adapter.startLeScan(self.ble_callback))
-            self.on_log(f"BLE tracking started={started} target={self.selected_address}")
+            self._log(f"BLE tracking started={started} target={self.selected_address}")
         except Exception as exc:
-            self.on_log(f"BLE tracking error: {exc}")
+            self._log(f"BLE tracking error: {exc}")
 
     def _stop_ble(self):
         if not IS_ANDROID or self.adapter is None or self.ble_callback is None:
@@ -223,7 +293,7 @@ class BluetoothScanner:
         try:
             self.adapter.stopLeScan(self.ble_callback)
         except Exception as exc:
-            self.on_log(f"Stop BLE error: {exc}")
+            self._log(f"Stop BLE error: {exc}")
 
     def shutdown(self):
         self.track_selected_mode = False
@@ -233,9 +303,9 @@ class BluetoothScanner:
                 if self.adapter.isDiscovering():
                     self.adapter.cancelDiscovery()
             except Exception as exc:
-                self.on_log(f"Shutdown discovery stop error: {exc}")
+                self._log(f"Shutdown discovery stop error: {exc}")
         self.scanning = False
-        self.on_status("Scan stopped")
+        self._status("Scan stopped")
         if self.receiver is not None:
             self.receiver.stop()
             self.receiver = None

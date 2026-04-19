@@ -4,10 +4,10 @@
 title = NearFar Audio BT
 
 # (str) Package name
-package.name = nearfar_audio_bt
+package.name = com.example.nearfar
 
 # (str) Package domain (needed for android/ios packaging)
-package.domain = org.example
+package.domain =
 
 # (str) Source code where the main.py live
 source.dir = .
@@ -22,7 +22,7 @@ source.include_exts = py,kv,png,jpg,atlas
 source.exclude_exts = md,txt,log
 
 # (list) List of directory to exclude (let empty to not exclude anything)
-source.exclude_dirs = tests, bin, .venv, .git, .buildozer
+source.exclude_dirs = tests, bin, .venv, .git, .buildozer, .gitignore, License, README.md, __pycache__
 
 # (list) List of exclusions using pattern matching
 # Do not prefix with './'

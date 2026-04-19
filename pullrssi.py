@@ -1,15 +1,34 @@
+from time import monotonic
+
+
 class RSSIRepository:
     def __init__(self):
         self.devices = {}
         self.selected_address = None
+        self._ema_alpha = 0.4
 
     def update_device(self, address, name, rssi, source="unknown"):
         prev = self.devices.get(address, {})
-        resolved_rssi = int(rssi) if rssi is not None else prev.get("rssi")
+        now = monotonic()
+        raw_rssi = int(rssi) if rssi is not None else prev.get("raw_rssi")
+        prev_filtered = prev.get("filtered_rssi")
+        if isinstance(raw_rssi, int):
+            if isinstance(prev_filtered, (int, float)):
+                filtered_rssi = round(
+                    (self._ema_alpha * float(raw_rssi))
+                    + ((1.0 - self._ema_alpha) * float(prev_filtered))
+                )
+            else:
+                filtered_rssi = int(raw_rssi)
+        else:
+            filtered_rssi = prev_filtered
         self.devices[address] = {
             "name": name or "Unknown",
-            "rssi": resolved_rssi,
+            "raw_rssi": raw_rssi,
+            "filtered_rssi": filtered_rssi,
+            "rssi": filtered_rssi,
             "source": source,
+            "updated_at": now,
         }
         return self.devices[address]
 
@@ -19,16 +38,23 @@ class RSSIRepository:
     def sorted_items(self):
         return sorted(
             self.devices.items(),
-            key=lambda item: (item[1]["rssi"] if isinstance(item[1]["rssi"], int) else -1000),
+            key=lambda item: (
+                item[1]["filtered_rssi"]
+                if isinstance(item[1].get("filtered_rssi"), int)
+                else -1000
+            ),
             reverse=True,
         )
 
     def spinner_values(self):
         values = []
         for address, data in self.sorted_items():
-            rssi_text = f"{data['rssi']} dBm" if isinstance(data["rssi"], int) else "N/A"
+            filtered = data.get("filtered_rssi")
+            raw = data.get("raw_rssi")
+            filtered_text = f"{filtered} dBm" if isinstance(filtered, int) else "N/A"
+            raw_text = f"{raw} dBm" if isinstance(raw, int) else "N/A"
             values.append(
-                f"{data['name']} | {address} | {rssi_text} | {data.get('source', 'n/a')}"
+                f"{data['name']} | {address} | F:{filtered_text} R:{raw_text} | {data.get('source', 'n/a')}"
             )
         return tuple(values)
 
@@ -43,14 +69,17 @@ class RSSIRepository:
             return "No device scanned yet"
         rows = []
         for address, data in self.sorted_items():
-            rssi = data.get("rssi")
-            rssi_text = f"{rssi} dBm" if isinstance(rssi, int) else "N/A"
-            dist = self.estimate_distance_m(rssi)
+            filtered = data.get("filtered_rssi")
+            raw = data.get("raw_rssi")
+            filtered_text = f"{filtered} dBm" if isinstance(filtered, int) else "N/A"
+            raw_text = f"{raw} dBm" if isinstance(raw, int) else "N/A"
+            dist = self.estimate_distance_m(filtered)
             dist_text = f"{dist:.2f} m" if isinstance(dist, float) else "N/A"
             rows.append(
                 f"{data.get('name', 'Unknown')}\n"
                 f"  {address}\n"
-                f"  RSSI: {rssi_text} | Distance: {dist_text} | {data.get('source', 'n/a')}"
+                f"  RSSI(F): {filtered_text} | RSSI(R): {raw_text}\n"
+                f"  Distance: {dist_text} | {data.get('source', 'n/a')}"
             )
         return "\n\n".join(rows)
 
