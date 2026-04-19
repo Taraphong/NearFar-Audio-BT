@@ -39,11 +39,7 @@ class BluetoothScanner:
         self._discovery_attempts = 0
         self._last_status = None
         self._last_log = {}
-
-    def request_permissions(self):
-        if not IS_ANDROID:
-            return
-        Platform.request_permissions()
+        self._awaiting_permission_result = False
 
     def _status(self, text):
         if text == self._last_status:
@@ -66,10 +62,10 @@ class BluetoothScanner:
         return self.adapter is not None
 
     def _missing_scan_permissions(self):
-        return Platform.missing_bluetooth_permissions()
+        return App_Platform.missing_bluetooth_permissions()
 
     def is_gps_enabled(self):
-        enabled = Platform.is_location_service_enabled()
+        enabled = App_Platform.is_location_service_enabled()
         if not enabled:
             self._log("Location service unavailable or disabled")
         return enabled
@@ -191,6 +187,21 @@ class BluetoothScanner:
                 return
             self._status(f"Scan error: {exc}")
 
+    def _on_permission_result(self, permissions, grants):
+        self._awaiting_permission_result = False
+        grant_map = dict(zip(permissions, grants))
+        denied = [
+            permission
+            for permission in App_Platform.bluetooth_runtime_permissions()
+            if not grant_map.get(permission, False)
+        ]
+        if denied:
+            self._status("Missing Bluetooth permissions")
+            self._log(f"Permission denied: {', '.join(denied)}")
+            return
+        self._log("Bluetooth permissions granted, retrying scan")
+        Clock.schedule_once(lambda *_: self.start_scan(), 0.2)
+
     def start_scan(self):
         if not IS_ANDROID:
             self._status("Android only")
@@ -205,7 +216,12 @@ class BluetoothScanner:
         if missing_permissions:
             self._status("Missing Bluetooth permissions")
             self._log(f"Missing permissions: {', '.join(missing_permissions)}")
-            self.request_permissions()
+            if not self._awaiting_permission_result:
+                self._awaiting_permission_result = True
+                App_Platform.request_permissions(
+                    App_Platform.bluetooth_runtime_permissions(),
+                    callback=self._on_permission_result,
+                )
             return
         if not self.is_gps_enabled():
             self._status("GPS / Location is OFF")

@@ -20,10 +20,8 @@ class RSSIRepository:
                 )
             else:
                 filtered_rssi = int(raw_rssi)
-            last_seen_at = now
         else:
             filtered_rssi = prev_filtered
-            last_seen_at = prev.get("last_seen_at", now)
         self.devices[address] = {
             "name": name or "Unknown",
             "raw_rssi": raw_rssi,
@@ -31,7 +29,6 @@ class RSSIRepository:
             "rssi": filtered_rssi,
             "source": source,
             "updated_at": now,
-            "last_seen_at": last_seen_at,
         }
         return self.devices[address]
 

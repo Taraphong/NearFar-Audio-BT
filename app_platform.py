@@ -1,155 +1,148 @@
-from kivy.utils import platform
+import os
+import sys
+
+try:
+    from kivy.utils import platform as kivy_platform
+except Exception:
+    kivy_platform = None
+
+
+platform = kivy_platform or ("android" if "ANDROID_ARGUMENT" in os.environ else sys.platform)
+
+
+def _log(message):
+    text = str(message)
+    if platform != "android":
+        print(text)
+        return
+    try:
+        from jnius import autoclass
+
+        autoclass("android.util.Log").i("BLERSSI_APP", text)
+    except Exception:
+        print(text)
 
 
 class App_Platform:
+    MANIFEST_ONLY_PERMISSIONS = [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
+    ]
+
     @staticmethod
     def is_android():
-        if platform == "android":
-            return platform
-        else:
-            pass
+        if platform != "android":
+            return False
+        try:
+            from android import api_version
 
+            _log(f"ANDROID API VERSION: {api_version}")
+        except Exception as exc:
+            _log(f"Unable to read Android API version: {exc}")
+        return True
 
-class permissions:
     @staticmethod
-    def _sdk_int():
-        if not Platform.is_android():
+    def sdk_int():
+        if not App_Platform.is_android():
             return 0
         try:
             from jnius import autoclass
 
-            BuildVersion = autoclass("android.os.Build$VERSION")
-            return int(BuildVersion.SDK_INT)
-        except Exception:
+            return int(autoclass("android.os.Build$VERSION").SDK_INT)
+        except Exception as exc:
+            _log(f"Unable to read SDK_INT: {exc}")
             return 0
 
     @staticmethod
-    def _activity():
-        if not Platform.is_android():
-            return None
+    def bluetooth_runtime_permissions():
+        sdk = App_Platform.sdk_int()
+        permissions = []
+        if sdk >= 31:
+            permissions.extend(
+                [
+                    "android.permission.BLUETOOTH_SCAN",
+                    "android.permission.BLUETOOTH_CONNECT",
+                ]
+            )
+        else:
+            permissions.extend(
+                [
+                    "android.permission.ACCESS_FINE_LOCATION",
+                    "android.permission.ACCESS_COARSE_LOCATION",
+                ]
+            )
+        return permissions
+
+    @staticmethod
+    def foreground_service_runtime_permissions():
+        permissions = []
+        if App_Platform.sdk_int() >= 33:
+            permissions.append("android.permission.POST_NOTIFICATIONS")
+        return permissions
+
+    @staticmethod
+    def _missing_permissions(permissions):
+        if not App_Platform.is_android():
+            return []
+        try:
+            from android.permissions import check_permission
+
+            return [name for name in permissions if not check_permission(name)]
+        except Exception as exc:
+            _log(f"Permission check error: {exc}")
+            return list(permissions)
+
+    @staticmethod
+    def request_permissions(permissions=None, callback=None):
+        if not App_Platform.is_android():
+            return []
+        requested = permissions or (
+            App_Platform.bluetooth_runtime_permissions()
+            + App_Platform.foreground_service_runtime_permissions()
+        )
+        missing = App_Platform._missing_permissions(requested)
+        if not missing:
+            return []
+        try:
+            from android.permissions import request_permissions
+
+            request_permissions(missing, callback)
+        except Exception as exc:
+            _log(f"Permission request error: {exc}")
+        return missing
+
+    @staticmethod
+    def missing_bluetooth_permissions():
+        return App_Platform._missing_permissions(
+            App_Platform.bluetooth_runtime_permissions()
+        )
+
+    @staticmethod
+    def missing_foreground_service_permissions():
+        return App_Platform._missing_permissions(
+            App_Platform.foreground_service_runtime_permissions()
+        )
+
+    @staticmethod
+    def is_location_service_enabled():
+        if not App_Platform.is_android():
+            return False
         try:
             from jnius import autoclass
 
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
-            return PythonActivity.mActivity
-        except Exception:
-            return None
-
-    @staticmethod
-    def bluetooth_permissions():
-        sdk = Platform._sdk_int()
-        if sdk >= 31:
-            return [
-                "android.permission.BLUETOOTH_SCAN",
-                "android.permission.BLUETOOTH_CONNECT",
-            ]
-        return [
-            "android.permission.BLUETOOTH",
-            "android.permission.BLUETOOTH_ADMIN",
-            "android.permission.ACCESS_FINE_LOCATION",
-            "android.permission.ACCESS_COARSE_LOCATION",
-        ]
-
-    @staticmethod
-    def foreground_service_permissions():
-        permissions = [
-            "android.permission.FOREGROUND_SERVICE",
-        ]
-        if Platform._sdk_int() >= 34:
-            permissions.append("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE")
-        return permissions
-
-    @staticmethod
-    def optional_runtime_permissions():
-        permissions = [
-            "android.permission.ACCESS_BACKGROUND_LOCATION",
-            "android.permission.MODIFY_AUDIO_SETTINGS",
-            "android.permission.POST_NOTIFICATIONS",
-        ]
-        if Platform._sdk_int() < 29:
-            return [
-                perm
-                for perm in permissions
-                if perm != "android.permission.ACCESS_BACKGROUND_LOCATION"
-            ]
-        if Platform._sdk_int() < 33:
-            return [
-                perm
-                for perm in permissions
-                if perm != "android.permission.POST_NOTIFICATIONS"
-            ]
-        return permissions
-
-    @staticmethod
-    def requested_permissions():
-        return (
-            Platform.bluetooth_permissions()
-            + Platform.foreground_service_permissions()
-            + Platform.optional_runtime_permissions()
-        )
-
-    @staticmethod
-    def has_permission(permission_name):
-        if not Platform.is_android():
-            return True
-        try:
-            from jnius import autoclass
-
-            PackageManager = autoclass("android.content.pm.PackageManager")
-            activity = Platform._activity()
-            if activity is None:
-                return False
-            granted = activity.checkSelfPermission(permission_name)
-            return int(granted) == int(PackageManager.PERMISSION_GRANTED)
-        except Exception:
-            return False
-
-    @staticmethod
-    def missing_permissions(permission_names):
-        if not Platform.is_android():
-            return []
-        return [perm for perm in permission_names if not Platform.has_permission(perm)]
-
-    @staticmethod
-    def missing_bluetooth_permissions():
-        return Platform.missing_permissions(Platform.bluetooth_permissions())
-
-    @staticmethod
-    def missing_foreground_service_permissions():
-        return Platform.missing_permissions(Platform.foreground_service_permissions())
-
-    @staticmethod
-    def request_permissions(permission_names=None):
-        if not Platform.is_android():
-            return
-        try:
-            from android.permissions import request_permissions  # type: ignore
-
-            request_permissions(permission_names or Platform.requested_permissions())
-        except Exception:
-            return
-
-    @staticmethod
-    def is_location_service_enabled():
-        if not Platform.is_android():
-            return False
-        try:
-            from jnius import autoclass
-
             Context = autoclass("android.content.Context")
             LocationManager = autoclass("android.location.LocationManager")
-            activity = Platform._activity()
-            if activity is None:
+
+            activity = PythonActivity.mActivity
+            manager = activity.getSystemService(Context.LOCATION_SERVICE)
+            if manager is None:
                 return False
-            location_manager = activity.getSystemService(Context.LOCATION_SERVICE)
-            if location_manager is None:
-                return False
-            gps_enabled = bool(
-                location_manager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-            )
+            gps_enabled = bool(manager.isProviderEnabled(LocationManager.GPS_PROVIDER))
             network_enabled = bool(
-                location_manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
             )
             return gps_enabled or network_enabled
-        except Exception:
+        except Exception as exc:
+            _log(f"Location service check error: {exc}")
             return False
